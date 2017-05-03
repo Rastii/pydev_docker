@@ -121,3 +121,9 @@ def is_python_package_dir(directory: str) -> bool:
     init_path = "{}/__init__.py".format(directory)
 
     return os.path.isfile(init_path)
+
+
+def set_default(value, default) -> Any:
+    if value is None:
+        return default
+    return value

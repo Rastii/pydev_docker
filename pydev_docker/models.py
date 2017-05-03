@@ -68,3 +68,20 @@ class Environment:
     @property
     def value(self) -> str:
         return self._value
+
+
+class Port:
+    """
+    Defines a model for port mapping between a host and a container
+    """
+    def __init__(self, host_port: int, container_port: int) -> None:
+        self._host_port = host_port
+        self._container_port = container_port
+
+    @property
+    def host_port(self) -> int:
+        return self._host_port
+
+    @property
+    def container_port(self) -> int:
+        return self._container_port

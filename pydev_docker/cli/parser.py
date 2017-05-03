@@ -28,6 +28,12 @@ class InvalidVolume(InvalidOption):
     """
 
 
+class InvalidPort(InvalidOption):
+    """
+    Specified port(s) was invalid
+    """
+
+
 class Command(enum.IntEnum):
     RUN = 1
     RUN_PTY = 2
@@ -88,24 +94,38 @@ def volume_from_str(volume_str: str) -> models.Volume:
             "form of HOST:CONTAINER[:MODE]".format(volume_str)
         )
     if len(split) == 2:
-        return models.Volume(
-            host_location=split[0],
-            container_location=split[1],
-        )
+        # Default volume mode is RW
+        # Note: to keep mypy happy, I had to do this instead of re-assigning mode
+        split.append("RW")
 
     try:
         mode = models.VolumeMode[split[2].upper()]  # type: models.VolumeMode
     except KeyError:
         raise InvalidVolume(
             "Specified mode: {} is invalid, "
-            "must be one of {}".format(mode, models.available_volume_modes())
+            "must be one of {}".format(split[2], models.available_volume_modes())
         )
 
     return models.Volume(
-        host_location=split[0],
+        host_location=utils.get_full_directory_path(split[0]),
         container_location=split[1],
         mode=mode,
     )
+
+
+def port_from_str(port_str: str) -> models.Port:
+    try:
+        split = [int(i) for i in port_str.split(":", 2)]
+    except ValueError:
+        raise InvalidPort("Port(s) must be valid integers")
+
+    if any(i < 0 or i > 65535 for i in split):
+        raise InvalidPort("Port range must be from 1-65535")
+
+    if len(split) == 1:
+        split.extend(split)
+
+    return models.Port(*split)
 
 
 def environments_from_dict(environment_dict: Mapping) -> List[models.Environment]:
@@ -158,6 +178,10 @@ def parse_yml_file(yml_data: Mapping) -> dict:
             parsed_options["ext_volumes"] = [
                 volume_from_str(v) for v in yml_data_docker_opts["volumes"]
             ]
+        if "ports" in yml_data_docker_opts:
+            parsed_options["ports"] = [
+                port_from_str(str(p)) for p in yml_data_docker_opts["ports"]
+            ]
 
     return parsed_options
 
@@ -176,6 +200,12 @@ def options_from_args_namespace(args: argparse.Namespace) -> options.ContainerOp
     # The following CLI args overwrite YML config args
     if args.py_packages:
         kwargs_options["py_volumes"] = _expand_py_paths(args.py_packages)
+
+    if args.network:
+        kwargs_options["network"] = args.network
+
+    if args.ports:
+        kwargs_options["ports"] = [port_from_str(p) for p in args.ports]
 
     return options.ContainerOptions(**kwargs_options)
 
@@ -225,7 +255,7 @@ EXAMPLES
 Run a command by mounting the current directory as the source, using the "py3_dev"
 docker image, and mounting an additional "NetworkPackage" python package:
 
-    %(prog)s run -p ~/Projects/NetworkPackage py3_dev "python3 setup.py test"
+    %(prog)s run -g ~/Projects/NetworkPackage py3_dev "python3 setup.py test"
 
 Spawn an interactive shell using the "py3_dev" image on the current directory:
 
@@ -235,7 +265,7 @@ CONFIG DOCUMENTATION
 --------------------
 
 The following describes the documentation for the configurations expected in the YML file
-when using the "-c" or "--config" command:
+when using the "--config" command:
 
 The **python_packages** section supports the following settings:
 
@@ -252,6 +282,9 @@ It contains the following settings:
         and should **not** be used here.
     - **network** (*string*): Specifies a network to connect the container to.  Defaults
         to the default bridge network.
+    - **ports** (*list*): Specifies a list of HOST_PORT[:CONTAINER_PORT] port mappings where
+        HOST_PORT is the port that will be opened on the host and the CONTAINER_PORT is the port
+        that will be opened on the container.
     - **volumes** (*list*): List of ``HOST_LOCATION:CONTAINER_LOCATION[:MODE]`` strings where
         HOST_LOCATION is the location of the volume on the host, CONTAINER_LOCATION is where
         to mount the volume on the container and MODE specifies the mount mode of the volume
@@ -279,18 +312,27 @@ def parse_args(args: Optional[Sequence]=None) -> Arguments:
     parser.add_argument("-v", "--verbose", action="count", default=0,
                         help="When specified, additional logging messages will be displayed to"
                              "STDOUT.  When specified twice, debugging logs will be included")
-    parser.add_argument("-c", "--config", type=str,
+    parser.add_argument("--config", type=str,
                         default=None, action=YamlParserAction)
     parser.add_argument("--keep", action="store_true", default=False,
                         help="Keep the container after running a command. "
                              "The default behavior is to remove the container "
                              "after the command has been ran")
-    parser.add_argument("-p", "--py-packages", dest="py_packages", action="append",
+    parser.add_argument("-g", "--py-packages", dest="py_packages", action="append",
                         help="Specify directories to mount on the container and append "
                              "the said directory to the $PYTHONPATH environment variable of "
                              "the container")
+    parser.add_argument("--network", dest="network", type=str,
+                        help="Specify the network of the container")
+    parser.add_argument("-p", "--publish", dest="ports", type=str, action="append",
+                        help="Publish a container's port(s) to the host using the following "
+                             "syntax: PORT[:CONTAINER_PORT] where PORT is the port that will "
+                             "be published on the host and CONTAINER_PORT is the optional port "
+                             "of the container")
 
     subparsers = parser.add_subparsers(dest="docker_command")
+    # Cannot set this attribute in the above function :-(
+    subparsers.required = True  # type: ignore
 
     # Parser for the "run" command
     run_parser = subparsers.add_parser(

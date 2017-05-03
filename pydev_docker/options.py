@@ -3,6 +3,7 @@ import itertools
 import os.path
 
 from pydev_docker import models
+from pydev_docker import utils
 
 
 class ContainerOptions:
@@ -17,12 +18,13 @@ class ContainerOptions:
                  source_directory: str,
                  *,  # force kwargs only for optional
                  command: Optional[str]=None,
-                 pypath_directory: str=DEFAULT_PYPATH_DIR,
                  container_source_directory: str=DEFAULT_SRC_DIR,
-                 py_volumes: Optional[Iterable[str]]=None,
-                 ext_volumes: Optional[Iterable[models.Volume]]=None,
                  environment_variables: Optional[Iterable[models.Environment]]=None,
+                 ext_volumes: Optional[Iterable[models.Volume]]=None,
                  network: Optional[str]=None,
+                 py_volumes: Optional[Iterable[str]]=None,
+                 ports: Optional[Iterable[models.Port]]=None,
+                 pypath_directory: str=DEFAULT_PYPATH_DIR,
                  remove_container: bool=True
                  ) -> None:
         """
@@ -48,17 +50,12 @@ class ContainerOptions:
         self._pypath_directory = pypath_directory
         self._container_source_directory = container_source_directory
 
-        if py_volumes is None:
-            py_volumes = []
-        self._py_volumes = py_volumes  # type: Iterable[str]
-
-        if ext_volumes is None:
-            ext_volumes = []
-        self._ext_volumes = ext_volumes  # type: Iterable[models.Volume]
-
-        if environment_variables is None:
-            environment_variables = []
-        self._environment_variables = environment_variables  # type: Iterable[models.Environment]
+        self._py_volumes = utils.set_default(py_volumes, [])  # type: Iterable[str]
+        self._ext_volumes = utils.set_default(ext_volumes, [])  # type: Iterable[models.Volume]
+        self._environment_variables = utils.set_default(
+            environment_variables, []
+        )  # type: Iterable[models.Environment]
+        self._ports = utils.set_default(ports, [])  # type: Iterable[models.Port]
 
         self._network = network
         self._remove_container = remove_container
@@ -86,10 +83,7 @@ class ContainerOptions:
         )
 
     def get_pythonpath_environment(self) -> models.Environment:
-        return models.Environment(
-            "PYTHONPATH",
-            "$PYTHONPATH:{}".format(self._pypath_directory),
-        )
+        return models.Environment("PYTHONPATH", self._pypath_directory)
 
     def iter_pypath_volumes(self) -> Iterator[models.Volume]:
         for v in self._py_volumes:
@@ -101,6 +95,9 @@ class ContainerOptions:
 
     def iter_environment_variables(self) -> Iterator[models.Environment]:
         return iter(self._environment_variables)
+
+    def get_ports(self) -> List[models.Port]:
+        return list(self._ports)
 
     def get_volume_collection(self) -> List[models.Volume]:
         """

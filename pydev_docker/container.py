@@ -1,4 +1,4 @@
-from typing import Optional, List, Iterator, Iterable
+from typing import Optional, List, Iterator, Iterable, Dict
 import logging
 import functools
 
@@ -61,6 +61,14 @@ def _environment_from_collection(
     return ["{}={}".format(e.name, e.value) for e in environments]
 
 
+def _port_bindings_from_collection(ports: Optional[Iterable[models.Port]]) -> Dict[int, int]:
+    if ports is None:
+        return {}
+
+    # Seems backwards here, but this is correct!
+    return {p.container_port: p.host_port for p in ports}
+
+
 def _remove_container(container: docker.models.containers.Container):
     try:
         container.remove()
@@ -113,11 +121,12 @@ class PyDevContainer:
             image: str,
             command: str,
             *,  # enforce the rest as kwargs
-            volumes: Optional[List[models.Volume]]=None,
             environment: Optional[List[models.Environment]]=None,
             network: Optional[str]=None,
+            ports: Optional[List[models.Port]]=None,
+            remove: bool=True,
             stderr: bool=True,
-            remove: bool=True) -> Iterator[bytes]:
+            volumes: Optional[List[models.Volume]]=None) -> Iterator[bytes]:
         """
         Run a command using a docker container using the specified `image` and
         returns a generator that streams stdout / stderr of the container.
@@ -125,11 +134,12 @@ class PyDevContainer:
         Args:
             image: The docker container will be built from this image
             command: The command to run on the docker container
-            volumes: List of volumes that the container will mount
             environment: List of environment variables that the container will use
             network: The network that the container will connect to
-            stderr: Returns messages from stderr, defaults to True
+            ports: List of ports that the container will expose
             remove: Removes container after running the command, defaults to True
+            stderr: Returns messages from stderr, defaults to True
+            volumes: List of volumes that the container will mount
 
         Yields:
             A generator that returns the output of the container for each iteration
@@ -143,11 +153,12 @@ class PyDevContainer:
             container = self._docker_client.containers.run(
                 image=image,
                 command=command,
-                volumes=_volume_strings_from_collection(volumes),
+                detach=True,
                 environment=_environment_from_collection(environment),
                 network_mode=network,
+                ports=_port_bindings_from_collection(ports),
                 stderr=stderr,
-                detach=True,
+                volumes=_volume_strings_from_collection(volumes),
             )
             logger.info("Successfully created container %s", container.name)
         except docker.errors.DockerException as e:
@@ -166,10 +177,11 @@ class PyDevContainer:
                 image: str,
                 *,  # enforce the rest as kwargs
                 command: str=DEFAULT_PTY_COMMAND,
-                volumes: Optional[List[models.Volume]]=None,
                 environment: Optional[List[models.Environment]]=None,
                 network: Optional[str]=None,
-                remove: bool=True):
+                ports: Optional[List[models.Port]]=None,
+                remove: bool=True,
+                volumes: Optional[List[models.Volume]]=None):
         """
         Runs a docker container and spawns an interactive shell over a pseudo terminal.
 
@@ -177,12 +189,12 @@ class PyDevContainer:
             image: The docker container will be built from this image
             command: The command to run on the docker container.  This command should spawn
                 a shell and defaults to /bin/bash
-            volumes: List of volumes that the container will mount
             environment: List of environment variables that the container will use
             network: The network that the container will connect to
+            ports: List of ports that the container will expose
             remove: Removes container after running the command, defaults to True
+            volumes: List of volumes that the container will mount
         """
-
         try:
             container = self._docker_client.containers.create(
                 image=image,
@@ -190,6 +202,7 @@ class PyDevContainer:
                 volumes=_volume_strings_from_collection(volumes),
                 environment=_environment_from_collection(environment),
                 network_mode=network,
+                ports=_port_bindings_from_collection(ports),
                 tty=True,
                 stdin_open=True,
             )

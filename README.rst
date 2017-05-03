@@ -4,7 +4,7 @@ PyDev Docker
 Work on multiple python packages in the same docker container with ease.
 
 PyDev Docker will automatically mount multiple python packages on the container
-and make the packages accessible via $PYTHONPATH environment variable.
+and make the packages accessible via PYTHONPATH environment variable.
 
 Examples
 ========
@@ -34,8 +34,8 @@ environment variable and run a command using the image "py3_dev":
 
 .. code-block:: bash
 
-    $ pydev_docker run -p ~/Projects/NetworkPackage \
-                       -p ~/Projects/FilePackage \
+    $ pydev_docker run -g ~/Projects/NetworkPackage \
+                       -g ~/Projects/FilePackage \
                        py3_dev "python3 setup.py test"
 
 
@@ -51,13 +51,14 @@ And run the command specifying the config file:
 
 .. code-block:: bash
 
-    $ pydev_docker run -c config.yml py3_dev "python3 setup.py test"
+    $ pydev_docker run --config config.yml py3_dev "python3 setup.py test"
 
 
 Configuration File Settings
 ===========================
 
-The configuration file supports two sections: ``python_packages`` and ``docker_options``.
+The configuration file is a YAML dictionary with two attributes: ``python_packages`` and
+``docker_options``.
 
 Python Packages Section
 -----------------------
@@ -91,8 +92,14 @@ It contains the following settings:
 - **environment** (*dictionary*): Specifies the environment variables that will be configured
   on the docker container.  Note that ``PYTHONPATH`` will be automatically configured and should
   **not** be used here.
+
 - **network** (*string*): Specifies a network to connect the container to.  Defaults
   to the default bridge network.
+
+- **ports** (*list*): Specifies a list of ``HOST_PORT[:CONTAINER_PORT]`` port mappings where
+  HOST_PORT is the port that will be opened on the host and the CONTAINER_PORT is the port
+  that will be opened on the container.
+
 - **volumes** (*list*): List of ``HOST_LOCATION:CONTAINER_LOCATION[:MODE]`` strings where
   HOST_LOCATION is the location of the volume on the host, CONTAINER_LOCATION is where to mount
   the volume on the container and MODE specifies the mount mode of the volume: ro (Read-Only) or
@@ -105,12 +112,15 @@ Example:
 
     docker_options:
         environment:
-            SUPER_SECRET: mysupersecretvalue
-            DB_USER: user
-            DB_PASS: superpass
+            UTIL_PATH: /utils
+            TEST_DB_USER: foo_user
+            TEST_DB_PASS: test_foo_user_pass
         network: network_with_db
+        ports:
+            - "80:8080"
+            - 443
         volumes:
-            - /tmp/test:/test:ro
+            - ~/my/utils:/utils:ro
 
 
 Installation

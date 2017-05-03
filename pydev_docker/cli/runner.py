@@ -70,6 +70,7 @@ class CommandDispatcher:
             volumes=options.get_volume_collection(),
             environment=options.get_environment_collection(),
             network=options.network,
+            ports=options.get_ports(),
             remove=options.remove_container,
         )
         for r in result:
@@ -91,6 +92,7 @@ class CommandDispatcher:
             volumes=options.get_volume_collection(),
             environment=options.get_environment_collection(),
             network=options.network,
+            ports=options.get_ports(),
             remove=options.remove_container,
         )
 
